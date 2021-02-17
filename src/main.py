@@ -88,13 +88,11 @@ class Instrument:
 
 			# format message
 			''' format arguments are:
-
 				1. ticker symbol
 				2. up or down since last announced price
 				3. percentage change since last announced price
 				4. up or down since market open
 				5. percentage change since market open
-
 			'''
 			temp_message = PRICE_ALERT_MESSAGE.format(self.ticker_info['symbol'],
 													up_or_down_since_last_announced,
@@ -131,18 +129,33 @@ def market_close_report(stocks_list_us):
 def pre_market_report(stocks_list_us):
 	return
 
+def init_all(tickers):
+    tickers_list = []
+    with concurrent.futures.ThreadPoolExecutor(
+            max_workers = len(tickers)
+        ) as executor:                                                      #Use ThreadPoolExecutor as a context manager
+            futures = {executor.submit(                                     #with threads = to number of values 
+                Instrument, ticker): ticker for ticker in tickers}         #get_results_string concurrently
+                                                                            #each thread handling a value
+    
+            for future in concurrent.futures.as_completed(futures):         #iterate over each completed future
+                tickers_list.append(future.result())
+    return tickers_list
+
+
 
 def main():
-	stocks_list = []
-	for stock in TICKER_SYMBOLS:
-		stocks_list.append(Instrument(stock))
-#    stocks_list = [Instrument("HCMC"), Instrument("MSFT")]
+	ticker_list = init_all(TICKER_SYMBOLS)
 
 	while True:
-		for stock in stocks_list:
-			stock.update_info()
-			stock.alert_price_change_if_needed()
-
+		with concurrent.futures.ThreadPoolExecutor(
+			max_workers=len(ticker_list)
+		) as executor:
+			{executor.submit(stock.update_info): stock for stock in ticker_list}
+		
+		for ticker in ticker_list:
+			ticker.alert_price_change_if_needed()
+		
 		time.sleep(CHECK_INTERVAL)
 
 
@@ -150,3 +163,14 @@ def main():
 #        stocks_list.append(Instrument(ticker_symbol))
 if __name__ == "__main__":
 	main()
+
+def update_info(self, tickers):
+    with concurrent.futures.ThreadPoolExecutor(
+        max_workers = len(TICKER_SYMBOLS)
+    ) as executor:                                                      #Use ThreadPoolExecutor as a context manager
+        futures = {executor.submit(                                     #with threads = to number of values 
+            ticker.update_info, ticker): ticker for ticker in tickers}         #get_results_string concurrently
+                                                                        #each thread handling a value
+
+        for future in concurrent.futures.as_completed(futures):         #iterate over each completed future
+            print(f"{future.result()}\n")                               #print results of the future to the screen
