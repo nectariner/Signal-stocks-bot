@@ -5,7 +5,7 @@ import time
 import os
 
 ### CONFIG ###
-TICKER_SYMBOLS = ["MSFT", "IBM", "ACB"]
+TICKER_SYMBOLS = ["HCMC", "ATVK", "ACB"]
 LOGGING_LEVEL = 0
 CHECK_INTERVAL = 60     # number of seconds between each price check
 
@@ -21,8 +21,8 @@ MARKET_CLOSE_MESSAGE = ""
 PERCENTAGE_DECIMAL_PLACES = 2  # number of decimal places after percentage. e.g. 3 = 2.51%
 
 # SIGNAL-CLI CONFIG #
-GROUPS = ""       # single string of group ids, space separated (i think)
-USERNAME = ""      # phone number in international format
+GROUPS = os.getenv("SIGNAL_CLI_GROUPS")       # single string of group ids, space separated (i think)
+USERNAME = os.getenv("SIGNAL_CLI_USERNAME")      # phone number in international format
 
 ### END CONFIG ###
 
@@ -40,10 +40,6 @@ class Instrument:
 		self.update_price()
 		self.last_announced_price = self.ticker_info['currentPrice']
 
-
-#        self.last_announced_price = self.ticker_info.currentPrice
-		print(self.ticker_info['currentPrice'])
-
 		if LOGGING_LEVEL:
 			print("constructor for ticker symbol {}, info = {}\nlast_announced_price = {}".format(
 				ticker_symbol, json.dumps(self.ticker_info, indent=4), self.last_announced_price))
@@ -59,7 +55,6 @@ class Instrument:
 		self.update_price()
 		print("ticker symbol {} updated, last_announced_price = {}, currentPrice = {}".format(
 			self.ticker_info['symbol'], self.last_announced_price, self.ticker_info['currentPrice']))
-		print("updated")
 		return
 
 	def alert_price_change_if_needed(self):
@@ -96,9 +91,9 @@ class Instrument:
 			'''
 			temp_message = PRICE_ALERT_MESSAGE.format(self.ticker_info['symbol'],
 													up_or_down_since_last_announced,
-													percentage_difference(self.ticker_info['currentPrice'], self.last_announced_price),
+													percentage_difference_since_last_announced,
 													up_or_down_since_open,
-													percentage_difference(self.ticker_info['currentPrice'], self.ticker_info['open'])
+													percentage_difference_since_market_open
 												)
 
 			print("alerting")
@@ -119,7 +114,10 @@ class Instrument:
 def percentage_difference(number1, number2):
 	if (number1 == number2):
 		return 0
-	return round(((number1 - number2) / number2) * 100, PERCENTAGE_DECIMAL_PLACES)
+	difference = round(((number1 - number2) / number2) * 100, PERCENTAGE_DECIMAL_PLACES)
+	print("percentage difference between {} and {} is {}".format(number1, number2, difference))
+
+	return difference
 
 
 def market_close_report(stocks_list_us):
@@ -130,47 +128,35 @@ def pre_market_report(stocks_list_us):
 	return
 
 def init_all(tickers):
-    tickers_list = []
-    with concurrent.futures.ThreadPoolExecutor(
-            max_workers = len(tickers)
-        ) as executor:                                                      #Use ThreadPoolExecutor as a context manager
-            futures = {executor.submit(                                     #with threads = to number of values 
-                Instrument, ticker): ticker for ticker in tickers}         #get_results_string concurrently
-                                                                            #each thread handling a value
-    
-            for future in concurrent.futures.as_completed(futures):         #iterate over each completed future
-                tickers_list.append(future.result())
-    return tickers_list
+	tickers_list = []
+	with concurrent.futures.ThreadPoolExecutor(
+			max_workers = len(tickers)
+		) as executor:
+			futures = {executor.submit(
+				Instrument, ticker): ticker for ticker in tickers}
+
+	for future in concurrent.futures.as_completed(futures):
+		tickers_list.append(future.result())
+	return tickers_list
 
 
 
 def main():
 	ticker_list = init_all(TICKER_SYMBOLS)
-
 	while True:
+		print("------------------------------------- updating info -------------------------------------")
 		with concurrent.futures.ThreadPoolExecutor(
 			max_workers=len(ticker_list)
 		) as executor:
 			{executor.submit(stock.update_info): stock for stock in ticker_list}
-		
+		print("------------------------------------- end updating info -------------------------------------")
+
 		for ticker in ticker_list:
 			ticker.alert_price_change_if_needed()
-		
+
 		time.sleep(CHECK_INTERVAL)
 
 
-#    for ticker_symbol in TICKER_SYMBOLS:
-#        stocks_list.append(Instrument(ticker_symbol))
 if __name__ == "__main__":
 	main()
 
-def update_info(self, tickers):
-    with concurrent.futures.ThreadPoolExecutor(
-        max_workers = len(TICKER_SYMBOLS)
-    ) as executor:                                                      #Use ThreadPoolExecutor as a context manager
-        futures = {executor.submit(                                     #with threads = to number of values 
-            ticker.update_info, ticker): ticker for ticker in tickers}         #get_results_string concurrently
-                                                                        #each thread handling a value
-
-        for future in concurrent.futures.as_completed(futures):         #iterate over each completed future
-            print(f"{future.result()}\n")                               #print results of the future to the screen
